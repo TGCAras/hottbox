@@ -2191,3 +2191,424 @@ class TensorTT(BaseTensorTD):
         """
         super(TensorTT, self).reset_mode_index(mode=mode)
         return self
+
+
+# TODO adjust docstring
+class TensorBTD(BaseTensorTD):
+    """ Representation of a tensor in the Block Term form (BTD).
+
+    Parameters
+    ----------
+    fmat : list[np.ndarray]
+        List of factor matrices for the CP representation of a tensor
+    core_values : np.ndarray
+        Array of coefficients on the super-diagonal of a core for the CP representation of a tensor
+    mode_names : list[str]
+        List of names for the factor matrices
+
+    Attributes
+    ----------
+    _fmat : list[np.ndarray]
+        Placeholder for a list of factor matrices for the CP representation of a tensor
+    _core_values : np.ndarray
+        Placeholder for an array of coefficients on the super-diagonal of a core for the CP representation of a tensor
+    _modes : list[Mode]
+        Description of the factor matrix for the corresponding mode
+
+    Raises
+    ------
+    TensorTopologyError
+        If there is inconsistency in shapes of factor matrices and core values
+
+    Examples
+    --------
+    1) Create kruskal representation of a tensor with default meta information
+
+    >>> import numpy as np
+    >>> from hottbox.core import TensorCPD
+    >>> I, J, K = 5, 6, 7   # shape of the tensor in full form
+    >>> R = 4               # Kruskal rank
+    >>> A = np.ones((I, R))
+    >>> B = np.ones((J, R))
+    >>> C = np.ones((K, R))
+    >>> fmat = [A, B , C]
+    >>> core_values = np.arange(R)
+    >>> tensor_cpd = TensorCPD(fmat, core_values)
+    >>> print(tensor_cpd)
+        Kruskal representation of a tensor with rank=(4,).
+        Factor matrices represent properties: ['mode-0', 'mode-1', 'mode-2']
+        With corresponding latent components described by (5, 6, 7) features respectively.
+
+    2) Create kruskal representation of a tensor with custom meta information
+
+    >>> import numpy as np
+    >>> from hottbox.core import TensorCPD
+    >>> I, J, K = 5, 6, 7   # shape of the tensor in full form
+    >>> R = 4               # Kruskal rank
+    >>> A = np.ones((I, R))
+    >>> B = np.ones((J, R))
+    >>> C = np.ones((K, R))
+    >>> fmat = [A, B , C]
+    >>> core_values = np.arange(R)
+    >>> mode_names = ["Year", "Month", "Day"]
+    >>> tensor_cpd = TensorCPD(fmat, core_values, mode_names)
+    >>> print(tensor_cpd)
+        Kruskal representation of a tensor with rank=(4,).
+        Factor matrices represent properties: ['Year', 'Month', 'Day']
+        With corresponding latent components described by (5, 6, 7) features respectively.
+    """
+    def __init__(self, fmat, rank, mode_names=None):
+        super(TensorBTD, self).__init__()
+        self._validate_init_data(fmat=fmat, rank=rank)
+        self._fmat = [mat.copy() for mat in fmat]
+        # self._core_values = core_values.copy()
+        self._modes = self._create_modes(mode_names=mode_names)
+        self._rank = rank
+
+    def __eq__(self, other):
+        """
+
+        Parameters
+        ----------
+        other : TensorBTD
+
+        Returns
+        -------
+        equal : bool
+
+        Notes
+        -----
+            If dimensionality check fails then ``TensorBTD`` objects cannot be equal by definition.
+        """
+        equal = False
+        if isinstance(self, other.__class__):
+            if self.ft_shape == other.ft_shape and self.rank == other.rank:
+                fmat_equal = all([np.allclose(fmat, other.fmat[i],  rtol=1e-05, atol=1e-08, equal_nan=True)
+                                  for i, fmat in enumerate(self.fmat)])
+                modes_equal = all([mode == other.modes[i] for i, mode in enumerate(self.modes)])
+                equal = fmat_equal and modes_equal
+        return equal
+
+    def __add__(self, other):
+        """ Summation of objects of ``TensorCPD`` class
+
+        Parameters
+        ----------
+        other : TensorCPD
+
+        Returns
+        -------
+        tensor_cpd : TensorCPD
+        """
+        raise NotImplementedError()
+        # if not isinstance(self, other.__class__):
+        #     raise TypeError("Don't know how to sum object of {} class "
+        #                     "with an object of {} class!".format(self.__class__.__name__,
+        #                                                          other.__class__.__name__))
+        # if self.ft_shape != other.ft_shape:
+        #     raise TensorTopologyError("Both objects should have the same topology!\n"
+        #                               "{}!={} (`self.ft_shape != other.ft_shape`)".format(self.ft_shape,
+        #                                                                                   other.ft_shape))
+        # if not all([self.modes[i].index == other.modes[i].index for i in range(self.order)]):
+        #     raise ModeError("Both tensors should have the same indices!")
+
+        # core_values = np.concatenate((self._core_values, other._core_values))
+        # fmat_list = [np.concatenate((fmat, other.fmat[i]), axis=1) for i, fmat in enumerate(self.fmat)]
+        # tensor_cpd = TensorCPD(fmat=fmat_list, core_values=core_values).copy_modes(self)
+        # if self.mode_names != other.mode_names:
+        #     for i in range(tensor_cpd.order):
+        #         tensor_cpd.reset_mode_name(mode=i)
+        # return tensor_cpd
+
+    def __str__(self):
+        """ Provides general information about this instance."""
+        return "Block Term Decomposition representation of a tensor with rank={}.\n" \
+               "Factor matrices represent properties: {}\n" \
+               "With corresponding latent components described by {} features respectively.".format(self.rank,
+                                                                                                    self.mode_names,
+                                                                                                    self.ft_shape)
+
+    def __repr__(self):
+        return str(self)
+
+    @staticmethod
+    def _validate_init_data(fmat, rank):
+        """ Validate data for the TensorBTD constructor
+
+        Parameters
+        ----------
+        fmat : list[np.ndarray]
+            List of factor matrices for the CP representation of a tensor
+        core_values : np.ndarray
+            Array of coefficients on the super-diagonal of a core for the CP representation of a tensor
+        """
+        if not isinstance(rank, tuple):
+            raise TypeError("Core values (`core_values`) should be a numpy array")
+        if not isinstance(fmat, list):
+            raise TypeError("All factor matrices (`fmat`) should be passed as a list!")
+        for mat in fmat:
+            if not isinstance(mat, np.ndarray):
+                raise TypeError("Each of the factor matrices should be a numpy array!")
+            if mat.ndim != 2:
+                raise TensorTopologyError("Each of the factor matrices should be a 2-dimensional numpy array!")
+
+        # check for illegal components in rank
+        if len(rank) < 1 or not all(len(comp) == 3 for comp in rank):
+            raise ValueError("Parameter `rank` should be tuple containing"
+                             "at least one tupel of size 3!")
+
+        rank_one_mode, *_ = np.where(np.array(rank).sum(axis=0) == len(rank))
+        if len(rank_one_mode) == 0:
+            raise ValueError("At least one mode needs to be 1 across all rank elements!")
+        elif len(rank_one_mode) == 1:
+            rank_one_mode = rank_one_mode[0]
+        elif len(rank_one_mode) == 2:
+            raise ValueError("Two modes with rank 1 given, must be 1 or 3!")
+        elif len(rank_one_mode) == 3:
+            rank_one_mode = rank_one_mode[2]
+        else:
+            raise ValueError(
+                "Unexpected case while sanity checking given rank for BTD\n:{}".format(rank))
+
+        if rank_one_mode != 2:
+            raise ValueError("Please make sure your 3rd mode is the rank 1 mode.")
+
+        if not all(comp.count((sum(comp)-1)//2) >= 2 for comp in rank):
+            raise ValueError(
+                "At least one component has 2 different ranks for L_r and L_r:\n{}".format(rank))
+
+    def _create_modes(self, mode_names):
+        """ Create meta data for each factor matrix
+
+        Parameters
+        ----------
+        mode_names : list[str]
+
+        Returns
+        -------
+        modes : list[Mode]
+        """
+        modes = super(TensorBTD, self)._create_modes(mode_names=mode_names)
+        return modes
+
+    @property
+    def core(self):
+        """ Core tensor of the BTD representation of a tensor
+
+        Returns
+        -------
+        core_tensor : Tensor
+        """
+        raise ValueError("BTD has no core tensor")
+
+    @property
+    def fmat(self):
+        """ List of factor matrices for the CP representation of a tensor
+
+        Returns
+        -------
+        factor_matrices : list[np.ndarray]
+        """
+        factor_matrices = self._fmat
+        return factor_matrices
+
+    @property
+    def modes(self):
+        """ Meta data for the factor matrices
+
+        Returns
+        -------
+        list[Mode]
+        """
+        return self._modes
+
+    @property
+    def order(self):
+        """ Order of a tensor represented through the BTD
+
+        Returns
+        -------
+        order : int
+        """
+        order = len(self.fmat)
+        return order
+
+    @property
+    def rank(self):
+        """ Rank of the BTD representation of a tensor.
+
+        Returns
+        -------
+        rank : tuple
+
+        Notes
+        -----
+        Most often referred to as the Kryskal rank
+        """
+        rank = self._rank
+        return rank
+
+    @property
+    def ft_shape(self):
+        """ Shape of a ``TensorBTD`` in the full format
+
+        Returns
+        -------
+        full_shape : tuple
+        """
+        full_shape = tuple(fmat.shape[0] for fmat in self.fmat)
+        return full_shape
+
+    @property
+    def mode_names(self):
+        """ Description of the physical modes for a ``TensorCPD``
+
+        Returns
+        -------
+        list[str]
+        """
+        return super(TensorBTD, self).mode_names
+
+    def reconstruct(self, keep_meta=0):
+        """ Converts the BTD representation of a tensor into a full tensor
+
+        Parameters
+        ----------
+        keep_meta : int
+            Keep meta information about modes of the given `tensor`.
+            0 - the output will have default values for the meta data
+            1 - keep only mode names
+            2 - keep mode names and indices
+
+        Returns
+        -------
+        tensor : Tensor
+        """
+        rank_one_mode = 2
+
+        # list of views for rank L_r fmats
+        # A = [A_1, A_2,  ... , A_R]
+        # paired for easy use with khatri_rao
+        list_of_views = list()
+        skip_rank_one_mode = self.fmat[:2]
+
+        curr_col = 0
+        for r in self.rank:
+            width = r[0]
+            l_view = skip_rank_one_mode[0][:,curr_col:curr_col+width]
+            r_view = skip_rank_one_mode[1][:,curr_col:curr_col+width]
+            list_of_views.append((l_view,r_view))
+
+        components = [np.dot(el[0], el[1].T) for el in list_of_views]
+        cols = np.hsplit(self.fmat[rank_one_mode], len(self.rank))
+        tensor = np.sum([np.einsum('ij,k->ijk', comp, np.squeeze(col)) for comp, col in zip(components, cols)], axis=0)
+        # for mode, fmat in enumerate(self.fmat):
+        #     tensor.mode_n_product(fmat, mode=mode, inplace=True)
+
+        # if keep_meta == 1:
+        #     mode_names = {i: mode.name for i, mode in enumerate(self.modes)}
+        #     tensor.set_mode_names(mode_names=mode_names)
+        # elif keep_meta == 2:
+        #     tensor.copy_modes(self)
+        # else:
+        #     pass
+
+        return Tensor(tensor)
+
+    def copy(self):
+        """ Produces a copy of itself as a new object
+
+        Returns
+        -------
+        new_object : TensorCPD
+        """
+        fmat = self._fmat
+        rank = self._rank
+        new_object = TensorBTD(fmat=fmat, rank=rank)
+        new_object.copy_modes(self)
+        return new_object
+
+    def copy_modes(self, tensor):
+        """ Copy modes meta from tensor
+
+        Parameters
+        ----------
+        tensor : {Tensor, TensorCPD, TensorTKD, TensorTT}
+
+        Returns
+        -------
+        self : TensorCPD
+
+        Notes
+        -----
+            Most of the time this method should only be used by the decomposition algorithms
+        """
+        # TODO: check for dimensionality
+        super(TensorBTD, self).copy_modes(tensor=tensor)
+        return self
+
+    def set_mode_names(self, mode_names):
+        """ Rename modes of a tensor representation
+
+        Parameters
+        ----------
+        mode_names : dict
+            New names for the tensor modes in form of a dictionary
+            The name of the mode defined by the Key of the dict will be renamed to the corresponding Value
+
+        Returns
+        -------
+        self : TensorCPD
+        """
+        super(TensorBTD, self).set_mode_names(mode_names=mode_names)
+
+        return self
+
+    def reset_mode_name(self, mode=None):
+        """ Set default name for the specified mode number
+
+        Parameters
+        ----------
+        mode : int
+            Mode number which name to be set to default value
+            By default resets names of all modes
+
+        Returns
+        -------
+        self : TensorCPD
+        """
+        super(TensorBTD, self).reset_mode_name(mode=mode)
+        return self
+
+    def set_mode_index(self, mode_index):
+        """ Set index for specified mode
+
+        Parameters
+        ----------
+        mode_index : dict
+            New indices for the factor matrices in form of a dictionary.
+            Key defines the mode whose index to be changed.
+            Value contains a list of new indices for this mode.
+
+        Returns
+        -------
+        self : TensorCPD
+        """
+        super(TensorBTD, self).set_mode_index(mode_index=mode_index)
+        return self
+
+    def reset_mode_index(self, mode=None):
+        """ Drop index for the specified mode number
+
+        Parameters
+        ----------
+        mode : int
+            Mode number which index to be dropped
+            By default resets all indices
+
+        Returns
+        -------
+        self : TensorCPD
+        """
+        super(TensorBTD, self).reset_mode_index(mode=mode)
+        return self

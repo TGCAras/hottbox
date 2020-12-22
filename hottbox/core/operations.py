@@ -296,3 +296,68 @@ def sampled_khatri_rao(matrices, sample_size=None, skip_matrix=None):
         result = hadamard([result, mat[idx, :]])
 
     return result, idxlist
+
+def partitioned_khatri_rao(matrices, partitions, reverse=False):
+    """ Khatri-Rao product of a list of matrices with variable partition size.
+
+    Parameters
+    ----------
+    matrices : list[np.ndarray]
+        List of matrices. Each matrix should have the same number of columns
+    partitions : iterable
+        containing tuples with each partition size. -1 indicates coloumn wise partition.
+    reverse : bool
+        If True, perform khatri-rao product on the list of matrices in the reversed order
+
+    Returns
+    -------
+    result : np.ndarray
+        The result of the Khatri-Rao product is a matrix of shape `()`
+    """
+
+    if len(matrices) != 2:
+        raise ValueError('khatri_roa product with variable partitions requires a list of at exactly 2 matrices, '
+                         'but {} given.'.format(len(matrices)))
+
+    if len(matrices) != len(partitions):
+        raise ValueError("Matrices and partitions need to be of the same size!")
+
+    # replace coloumn wise indicators
+    if -1 in partitions:
+        _partitions = []
+        for m, p in zip(matrices, partitions):
+            if p == -1:
+                _partitions.append((1,) * m.shape[1])
+            else:
+                _partitions.append(p)
+        partitions = tuple(_partitions)
+
+    n_partitions = len(partitions[0])
+    if not all(len(part) == n_partitions for part in partitions):
+        raise ValueError("Number ob partitions must be consistant across all matrices!")
+    if not all(matrix.shape[1] == sum(partition) for matrix, partition in zip(matrices, partitions)):
+        raise ValueError("The partitions don't fit the matrices.")
+
+    if reverse:
+        matrices = matrices[::-1]
+        partitions = matrices[::-1]
+
+    n_rows = matrices[0].shape[0] * matrices[1].shape[0]
+
+    left_partition = partitions[0]
+    right_partition = partitions[1]
+
+    n_cols = sum(l*r for l, r in zip(left_partition, right_partition))
+        
+    result = np.zeros((n_rows, n_cols))
+    current_col, current_col_l, current_col_r = 0, 0, 0
+    for i_left, i_right in zip(left_partition, right_partition):
+        matrix_l = matrices[0][:,current_col_l:current_col_l+i_left]
+        matrix_r = matrices[1][:,current_col_r:current_col_r+i_right]
+        _temp = kronecker([matrix_l, matrix_r])
+        result[:,current_col:current_col+i_left*i_right] = _temp
+
+        current_col_l += i_left
+        current_col_r += i_right
+        current_col += _temp.shape[1]
+    return result

@@ -212,5 +212,5 @@ def residual_tensor(tensor_orig, tensor_approx):
         residual = Tensor(tensor_orig.data - tensor_approx.reconstruct().data)
     else:
         raise TypeError("Unknown data type of the approximation tensor!\n"
-                        "The available types for `tensor_B` are `Tensor`,  `TensorCPD`,  `TensorTKD`,  `TensorTT`")
+                        "The available types for `tensor_B` are `Tensor`,  `TensorCPD`,  `TensorTKD`,  `TensorTT`, 'TensorBTD")
     return residual
