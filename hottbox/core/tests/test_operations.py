@@ -288,3 +288,12 @@ def test_kronecker():
     n_cols = reduce(lambda x, y: x * y, cols[:-1])
     true_shape = (n_rows, n_cols)
     assert result.shape == true_shape
+
+def test_partitioned_khatri_rao():
+    """Test partitioned khatri rao"""
+    A = np.arange(3*6).reshape(3,6)
+    B = np.arange(3*6)[::-1].reshape(3,6)
+    A_partitions = (1,) * A.shape[1]
+    B_partitions = (1,) * B.shape[1]
+    np.testing.assert_array_equal(khatri_rao([A,B]), 
+                partitioned_khatri_rao([A,B], [A_partitions, B_partitions]))

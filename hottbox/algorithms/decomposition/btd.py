@@ -117,15 +117,15 @@ class BTD(BaseBTD):
         return new_object
 
     def decompose(self, tensor, rank, keep_meta=0, kr_reverse=False, factor_mat=None):
-        """ Performs CPD-ALS on the ``tensor`` with respect to the specified ``rank``
+        """ Performs BTD on the ``tensor`` with respect to the specified ``rank``
 
         Parameters
         ----------
         tensor : Tensor
             Multi-dimensional data to be decomposed
         rank : tuple
-            Desired Kruskal rank for the given ``tensor``. Should contain only one value.
-            If it is greater then any of dimensions then random initialisation is used
+            tuple of tuple containing each components rank.
+            Length of the outer tuple defines the number of components
         keep_meta : int
             Keep meta information about modes of the given ``tensor``.
             0 - the output will have default values for the meta data
@@ -198,14 +198,14 @@ class BTD(BaseBTD):
         # core_values = np.repeat(np.array([1]), rank)
         norm = tensor.frob_norm
 
-        # temp to determine mode witch is not rank 1
+        # extract the L_r ranks
         higher_rank_partitions = [r[0] for r in rank]
 
         for n_iter in range(self.max_iter):
 
             for mode in range(3):
                 current_mode_skipped = fmat[:mode] + fmat[mode + 1:]
-                # NOTE is it okay to skip the current mode an calculate the decomp as normal?
+
                 if mode == 1:
                     current_mode_skipped.reverse()
 
@@ -214,25 +214,25 @@ class BTD(BaseBTD):
                     # A = [A_1, A_2,  ... , A_R]
                     # paired for easy use with khatri_rao
                     list_of_views = list()
-                    skip_rank_one_mode = fmat[:rank_one_mode] + \
-                        fmat[rank_one_mode + 1:]
+
                     curr_col = 0
                     for width in higher_rank_partitions:
-                        l_view = skip_rank_one_mode[0][:,
+                        l_view = current_mode_skipped[0][:,
                                                        curr_col:curr_col+width]
-                        r_view = skip_rank_one_mode[1][:,
+                        r_view = current_mode_skipped[1][:,
                                                        curr_col:curr_col+width]
                         list_of_views.append((l_view, r_view))
+                        curr_col += width
+                        
                     # coloumn wise khatri rao with each view
-                    _temp = [khatri_rao(pair) for pair in list_of_views]
+                    _temp = [khatri_rao(pair, reverse=kr_reverse) for pair in list_of_views]
                     # sum up rows
-                    _temp = [el.sum(axis=1)[:, np.newaxis] for el in _temp]
+                    _temp = [el.sum(axis=1, keepdims=True) for el in _temp]
                     # concat vectors to single matrix and pseudo inverse
-                    _temp = np.linalg.pinv(np.concatenate(_temp, axis=1))
+                    _temp = np.linalg.pinv(np.hstack(_temp).T)
                     # dot product with unfold and transpose
 
-                    _temp = np.transpose(
-                        np.dot(_temp, tensor.unfold(mode, inplace=False).data.T))
+                    _temp = np.dot(tensor.unfold(mode, inplace=False).data, _temp)
 
                     _temp /= np.linalg.norm(_temp, axis=0)
 
@@ -241,22 +241,25 @@ class BTD(BaseBTD):
 
                 else:
                     # set correct order for partitioned and coloumn wise
-                    if current_mode_skipped[0].shape[1] > current_mode_skipped[1].shape[1]:
+                    if mode == 0:
                         _partitions = [higher_rank_partitions, -1]
                     else:
                         _partitions = [-1, higher_rank_partitions]
                     # khatri rao with partitions given by rank
                     _temp = partitioned_khatri_rao(
-                        current_mode_skipped, _partitions)
+                        current_mode_skipped, _partitions, reverse=kr_reverse)
                     # pseudo inverse
-                    _temp = np.linalg.pinv(_temp)
+                    _temp = np.linalg.pinv(_temp.T)
                     # multiply by current mode unfold and transpose
                     # NOTE Not sure why I had to transpose the unfolding.
-                    _temp = np.transpose(
-                        np.dot(_temp, tensor.unfold(mode, inplace=False).data.T))
+                    _temp = np.dot(tensor.unfold(mode, inplace=False).data, _temp)
 
                     if mode == 1:
-                        _temp, *_ = np.linalg.qr(_temp)
+                        curr_col = 0
+                        for width in higher_rank_partitions:
+                            view = _temp[:,curr_col:curr_col+width]
+                            _temp[:,curr_col:curr_col+width], _ = np.linalg.qr(view)
+                            curr_col += width
 
                     # reassign calculation to fmat list
                     fmat[mode] = _temp

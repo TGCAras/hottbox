@@ -340,7 +340,7 @@ def partitioned_khatri_rao(matrices, partitions, reverse=False):
 
     if reverse:
         matrices = matrices[::-1]
-        partitions = matrices[::-1]
+        partitions = partitions[::-1]
 
     n_rows = matrices[0].shape[0] * matrices[1].shape[0]
 

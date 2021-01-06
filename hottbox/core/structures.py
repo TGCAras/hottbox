@@ -2493,13 +2493,13 @@ class TensorBTD(BaseTensorTD):
         skip_rank_one_mode = self.fmat[:2]
 
         curr_col = 0
-        for r in self.rank:
-            width = r[0]
+        for width, *_ in self.rank:
             l_view = skip_rank_one_mode[0][:,curr_col:curr_col+width]
             r_view = skip_rank_one_mode[1][:,curr_col:curr_col+width]
             list_of_views.append((l_view,r_view))
+            curr_col += width
 
-        components = [np.dot(el[0], el[1].T) for el in list_of_views]
+        components = [np.dot(A, B.T) for A, B in list_of_views]
         cols = np.hsplit(self.fmat[rank_one_mode], len(self.rank))
         tensor = np.sum([np.einsum('ij,k->ijk', comp, np.squeeze(col)) for comp, col in zip(components, cols)], axis=0)
         # for mode, fmat in enumerate(self.fmat):
