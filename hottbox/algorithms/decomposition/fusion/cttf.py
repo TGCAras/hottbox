@@ -2,7 +2,6 @@ import functools
 import warnings
 
 import numpy as np
-import cupy as cp
 
 from hottbox.algorithms.decomposition.btd import BTD_LL11
 from hottbox.algorithms.decomposition.cpd import CPD
