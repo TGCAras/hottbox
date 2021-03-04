@@ -16,7 +16,10 @@ class BaseCPD(Decomposition):
         self.max_iter = max_iter
         self.epsilon = epsilon
         self.tol = tol
-        self.random_state = random_state
+        if random_state is not None:
+            self.random_state = random_state
+        else:
+            self.random_state = np.random.RandomState()
         self.verbose = verbose
 
     def copy(self):
@@ -78,11 +81,11 @@ class BaseCPD(Decomposition):
                     k = tensor.unfold(mode, inplace=False).data
                     fmat[mode], _, _ = svd(k, t_rank)
             elif self.init == 'random':
-                fmat = [np.random.randn(mode_size, t_rank) for mode_size in tensor.shape]
+                fmat = [self.random_state.randn(mode_size, t_rank) for mode_size in tensor.shape]
             else:
                 raise NotImplementedError('The given initialization is not available')
         else:
-            fmat = [np.random.randn(mode_size, t_rank) for mode_size in tensor.shape]
+            fmat = [self.random_state.randn(mode_size, t_rank) for mode_size in tensor.shape]
             if self.verbose and self.init != 'random':
                 warnings.warn(
                     "Specified rank value is greater then one of the dimensions of a tensor ({} > {}).\n"
@@ -597,12 +600,12 @@ class Parafac2(BaseCPD):
         s_mode = modes[0, 1]
         modes = modes[:, 0]
         fmat_h = np.identity(rank[0])
-        fmat_v = np.random.randn(s_mode, rank[0])
-        fmat_s = np.random.randn(rank[0], rank[0], mode_sz)
+        fmat_v = self.random_state.randn(s_mode, rank[0])
+        fmat_s = self.random_state.randn(rank[0], rank[0], mode_sz)
 
         for k in range(mode_sz):
             fmat_s[:, :, k] = np.identity(rank[0])
-        fmat_u = np.array([np.random.randn(modes[i], rank[0]) for i in range(mode_sz)])
+        fmat_u = np.array([self.random_state.randn(modes[i], rank[0]) for i in range(mode_sz)])
         if (np.array(modes) < rank[0]).sum() != 0:
             warnings.warn(
                 "Specified rank value is greater then one of the dimensions of a tensor ({} > {}).\n"

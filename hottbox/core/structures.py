@@ -594,9 +594,9 @@ class Tensor(object):
             raise TensorStateError("The tensor is not in the original form")
 
         # Unfold data
-        if rtype is "T":
+        if rtype == "T":
             unfold_function = unfold
-        elif rtype is "K":
+        elif rtype == "K":
             unfold_function = kolda_unfold
         else:
             raise ValueError("Unknown type of unfolding! Parameter `rtype` should be one of {\"T\", \"K\"}.")
@@ -638,9 +638,9 @@ class Tensor(object):
             raise TensorStateError("The tensor is not in the original form")
 
         # Unfold data
-        if rtype is "T":
+        if rtype == "T":
             order = "C"
-        elif rtype is "K":
+        elif rtype == "K":
             order = "F"
         else:
             raise ValueError("Unknown type of vectorisation! Parameter `rtype` should be one of {\"T\", \"K\"}.")
@@ -687,14 +687,14 @@ class Tensor(object):
         folding_mode = temp[0]
         if len(self._state.mode_order) == 1:
             # Undo vectorisation
-            if self._state.rtype is "T":
+            if self._state.rtype == "T":
                 order = "C"
             else:
                 order = "F"
             data_folded = np.reshape(self.data, self.ft_shape, order=order)
         else:
             # Undo matricization (unfolding)
-            if self._state.rtype is "T":
+            if self._state.rtype == "T":
                 fold_function = fold
             else:
                 fold_function = kolda_fold
@@ -1415,6 +1415,20 @@ class TensorCPD(BaseTensorTD):
         """
         super(TensorCPD, self).reset_mode_index(mode=mode)
         return self
+
+    def rearrange(self, order):
+        """Rearrange CPD according to the indices given by order
+
+        Args:
+            order ([type]): [description]
+        """
+        if len(order) != self._fmat[0].shape[1]:
+            raise ValueError("'order' length does not match 'rank' length.")
+
+        for mode in range(self.order):
+            self._fmat[mode] = self._fmat[mode][:,order]
+        
+        self._core_values = self._core_values[order]
 
 
 class TensorTKD(BaseTensorTD):
@@ -2219,43 +2233,6 @@ class TensorBTD(BaseTensorTD):
     ------
     TensorTopologyError
         If there is inconsistency in shapes of factor matrices and core values
-
-    Examples
-    --------
-    1) Create kruskal representation of a tensor with default meta information
-
-    >>> import numpy as np
-    >>> from hottbox.core import TensorCPD
-    >>> I, J, K = 5, 6, 7   # shape of the tensor in full form
-    >>> R = 4               # Kruskal rank
-    >>> A = np.ones((I, R))
-    >>> B = np.ones((J, R))
-    >>> C = np.ones((K, R))
-    >>> fmat = [A, B , C]
-    >>> core_values = np.arange(R)
-    >>> tensor_cpd = TensorCPD(fmat, core_values)
-    >>> print(tensor_cpd)
-        Kruskal representation of a tensor with rank=(4,).
-        Factor matrices represent properties: ['mode-0', 'mode-1', 'mode-2']
-        With corresponding latent components described by (5, 6, 7) features respectively.
-
-    2) Create kruskal representation of a tensor with custom meta information
-
-    >>> import numpy as np
-    >>> from hottbox.core import TensorCPD
-    >>> I, J, K = 5, 6, 7   # shape of the tensor in full form
-    >>> R = 4               # Kruskal rank
-    >>> A = np.ones((I, R))
-    >>> B = np.ones((J, R))
-    >>> C = np.ones((K, R))
-    >>> fmat = [A, B , C]
-    >>> core_values = np.arange(R)
-    >>> mode_names = ["Year", "Month", "Day"]
-    >>> tensor_cpd = TensorCPD(fmat, core_values, mode_names)
-    >>> print(tensor_cpd)
-        Kruskal representation of a tensor with rank=(4,).
-        Factor matrices represent properties: ['Year', 'Month', 'Day']
-        With corresponding latent components described by (5, 6, 7) features respectively.
     """
     def __init__(self, fmat, rank, mode_names=None):
         super(TensorBTD, self).__init__()
@@ -2597,6 +2574,37 @@ class TensorBTD(BaseTensorTD):
         super(TensorBTD, self).set_mode_index(mode_index=mode_index)
         return self
 
+    def rearrange(self, order):
+        """Rearrange BTD according to the indices given by order
+
+        Args:
+            order ([type]): [description]
+        """
+        if len(order) != len(self.rank):
+            raise ValueError("'order' length does not match 'rank' length.")
+
+        full_shape = self.ft_shape
+
+        A_view = [np.empty((full_shape[0], r)) for r, *_ in self.rank]
+        B_view = [np.empty((full_shape[1], r)) for r, *_ in self.rank]
+
+        self._fmat[2] = self._fmat[2][:,order]
+
+        curr_col = 0
+        for i, (width, *_) in enumerate(self.rank):
+            A_view[i] = self.fmat[0][:,curr_col:curr_col+width]
+            B_view[i] = self.fmat[1][:,curr_col:curr_col+width]
+
+            curr_col += width
+
+        self._fmat[0] = np.concatenate([A_view[i] for i in order], axis=1)
+        self._fmat[1] = np.concatenate([B_view[i] for i in order], axis=1)
+
+        rank_array = np.array(self.rank)
+        rank_array = rank_array[order]
+        self._rank = tuple(tuple(comp) for comp in rank_array)
+
+
     def reset_mode_index(self, mode=None):
         """ Drop index for the specified mode number
 
@@ -2612,3 +2620,124 @@ class TensorBTD(BaseTensorTD):
         """
         super(TensorBTD, self).reset_mode_index(mode=mode)
         return self
+
+class TensorBTDLL11(TensorBTD):
+    @staticmethod
+    def _validate_init_data(fmat, rank):
+        """ Validate data for the TensorBTD constructor
+
+        Parameters
+        ----------
+        fmat : list[np.ndarray]
+            List of factor matrices for the CP representation of a tensor
+        core_values : np.ndarray
+            Array of coefficients on the super-diagonal of a core for the CP representation of a tensor
+        """
+        if not isinstance(rank, tuple):
+            raise TypeError("Core values (`core_values`) should be a numpy array")
+        if not isinstance(fmat, list):
+            raise TypeError("All factor matrices (`fmat`) should be passed as a list!")
+        for mat in fmat:
+            if not isinstance(mat, np.ndarray):
+                raise TypeError("Each of the factor matrices should be a numpy array!")
+            if mat.ndim != 2:
+                raise TensorTopologyError("Each of the factor matrices should be a 2-dimensional numpy array!")
+
+        # check for illegal components in rank
+        if len(rank) < 1 or not all(len(comp) == 4 for comp in rank):
+            raise ValueError("Parameter `rank` should be tuple containing"
+                             "at least one tupel of size 3!")
+
+        rank_one_mode, *_ = np.where(np.array(rank).sum(axis=0) == len(rank))
+        if len(rank_one_mode) <= 1:
+            raise ValueError(
+                "At least two modes needs to be 1 across all rank elements!")
+        elif len(rank_one_mode) == 2:
+            rank_one_mode = rank_one_mode
+        elif len(rank_one_mode) == 3:
+            raise ValueError("Three modes with rank 1 given, must be 2 or 4!")
+        elif len(rank_one_mode) == 4:
+            rank_one_mode = rank_one_mode[2:]
+        else:
+            raise ValueError(
+                "Unexpected case while sanity checking given rank for BTD\n:{}".format(rank))
+
+
+        if not all(rank_one_mode == [2,3]) :
+            raise ValueError("Please make sure your 3rd and 4th mode are the rank 1 modes.")
+
+        if not all(comp.count((sum(comp)-2)//2) >= 2 for comp in rank):
+            raise ValueError(
+                "At least one component has 2 different ranks for L_r and L_r:\n{}".format(rank))
+
+    def reconstruct(self, keep_meta=0):
+        """ Converts the BTD representation of a tensor into a full tensor
+
+        Parameters
+        ----------
+        keep_meta : int
+            Keep meta information about modes of the given `tensor`.
+            0 - the output will have default values for the meta data
+            1 - keep only mode names
+            2 - keep mode names and indices
+
+        Returns
+        -------
+        tensor : Tensor
+        """
+
+        # list of views for rank L_r fmats
+        # A = [A_1, A_2,  ... , A_R]
+        # paired for easy use with khatri_rao
+        list_of_views = list()
+        skip_rank_one_mode = self.fmat[:2]
+
+        curr_col = 0
+        for width, *_ in self.rank:
+            l_view = skip_rank_one_mode[0][:,curr_col:curr_col+width]
+            r_view = skip_rank_one_mode[1][:,curr_col:curr_col+width]
+            list_of_views.append((l_view,r_view))
+            curr_col += width
+
+        components = [np.dot(A, B.T) for A, B in list_of_views]
+        cols = zip(np.hsplit(self.fmat[2], len(self.rank)), np.hsplit(self.fmat[3], len(self.rank)))
+        cols = [(c_n.squeeze(), d_n.squeeze()) for c_n, d_n in cols]
+        tensor = np.sum([np.einsum('ij,k,l->ijkl', comp, *col) for comp, col in zip(components, cols)], axis=0)
+
+        # if keep_meta == 1:
+        #     mode_names = {i: mode.name for i, mode in enumerate(self.modes)}
+        #     tensor.set_mode_names(mode_names=mode_names)
+        # elif keep_meta == 2:
+        #     tensor.copy_modes(self)
+        # else:
+        #     pass
+
+        return Tensor(tensor)
+
+    def rearrange(self, order):
+        """Rearrange BTD according to the indices given by order
+
+        Args:
+            order ([type]): [description]
+        """
+        if len(order) != len(self.rank):
+            raise ValueError("'order' length does not match 'rank' length.")
+
+        A_view = []
+        B_view = []
+
+        curr_col = 0
+        for width, *_ in self.rank:
+            A_view.append(self.fmat[0][:,curr_col:curr_col+width])
+            B_view.append(self.fmat[1][:,curr_col:curr_col+width])
+
+            curr_col += width
+
+        self._fmat[0] = np.concatenate([A_view[i] for i in order], axis=1)
+        self._fmat[1] = np.concatenate([B_view[i] for i in order], axis=1)
+        self._fmat[2] = self._fmat[2][:,order]
+        self._fmat[3] = self._fmat[3][:,order]
+
+        rank_array = np.array(self.rank)
+        rank_array = rank_array[order]
+        self._rank = tuple(tuple(comp) for comp in rank_array)

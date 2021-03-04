@@ -344,14 +344,11 @@ def partitioned_khatri_rao(matrices, partitions, reverse=False):
 
     n_rows = matrices[0].shape[0] * matrices[1].shape[0]
 
-    left_partition = partitions[0]
-    right_partition = partitions[1]
-
-    n_cols = sum(l*r for l, r in zip(left_partition, right_partition))
+    n_cols = sum(l*r for l, r in zip(*partitions))
         
     result = np.zeros((n_rows, n_cols))
     current_col, current_col_l, current_col_r = 0, 0, 0
-    for i_left, i_right in zip(left_partition, right_partition):
+    for i_left, i_right in zip(*partitions):
         matrix_l = matrices[0][:,current_col_l:current_col_l+i_left]
         matrix_r = matrices[1][:,current_col_r:current_col_r+i_right]
         _temp = kronecker([matrix_l, matrix_r])
